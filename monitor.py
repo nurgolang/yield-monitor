@@ -15,19 +15,26 @@ EARN_KEYWORDS = [
 
 MIN_APR = 10.0
 DB_FILE = "seen_news.json"
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+
+# Реалистичные заголовки
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache'
+}
 
 URLS = {
-    "Bybit ⚫️": "https://api.bybit.com/v5/announcements/index?locale=en-US&limit=15&type=latest_activities",
-    "KuCoin 🟢": "https://api.kucoin.com/api/v1/bulletins?lang=en_US&pageSize=15",
-    "Gate.io 🚪": "https://www.gate.io/json_svr/query/?u=10&c=467664&type=1", 
-    "MEXC 🌊": "https://www.mexc.com/api/platform/announce/list_v2?pageNum=1&pageSize=15",
-    "HTX 🔥": "https://www.htx.com/-/x/hbg/v1/support/fresh/announcement/list?limit=15&category=100000",
-    "Bitget 🔵": "https://api.bitget.com/api/v2/public/announcement?limit=15&language=en_US",
-    "Binance 🔶": "https://www.binance.com/bapi/composite/v1/public/cms/article/catalog/list?catalogs=48&limit=15",
-    "BitMart Ⓜ️": "https://api-cloud.bitmart.com/spot/v1/news?limit=15",
-    "AscendEX 🚀": "https://ascendex.com/api/pro/v1/support/cms/announcements?page=1&pageSize=15",
-    "BingX 🟦": "https://bingx.com/api/v1/common/help/article/list?pageId=1&pageSize=10&lang=en-us" 
+    "Bybit": "https://api.bybit.com/v5/announcements/index?locale=en-US&limit=15&type=latest_activities",
+    "KuCoin": "https://api.kucoin.com/api/v1/bulletins?lang=en_US&pageSize=15",
+    "Gate": "https://www.gate.io/json_svr/query/?u=10&c=467664&type=1", 
+    "MEXC": "https://www.mexc.com/api/platform/announce/list_v2?pageNum=1&pageSize=15",
+    "HTX": "https://www.htx.com/-/x/hbg/v1/support/fresh/announcement/list?limit=15&category=100000",
+    "Bitget": "https://api.bitget.com/api/v2/public/announcement?limit=15&language=en_US",
+    "Binance": "https://www.binance.com/bapi/composite/v1/public/cms/article/catalog/list?catalogs=48&limit=15",
+    "BitMart": "https://api-cloud.bitmart.com/spot/v1/news?limit=15",
+    "AscendEX": "https://ascendex.com/api/pro/v1/support/cms/announcements?page=1&pageSize=15",
+    "BingX": "https://bingx.com/api/v1/common/help/article/list?pageId=1&pageSize=10&lang=en-us" 
 }
 
 # --- SYSTEM ---
@@ -62,109 +69,84 @@ def save_db(data):
 def is_gem(title):
     if not title: return False
     t = title.lower()
-    
-    if not re.search(STABLES_REGEX, title, re.IGNORECASE):
-        return False
-        
-    if not any(k in t for k in EARN_KEYWORDS):
-        return False
-
+    if not re.search(STABLES_REGEX, title, re.IGNORECASE): return False
+    if not any(k in t for k in EARN_KEYWORDS): return False
     percents = re.findall(r"(\d+(?:\.\d+)?)\s*%", t)
     if percents:
-        values = [float(x) for x in percents]
-        if max(values) < MIN_APR:
-            return False 
-
+        if max([float(x) for x in percents]) < MIN_APR: return False 
     return True
 
 # --- FETCHER ---
 def fetch_feed():
     news = []
     s = requests.Session()
-    s.headers.update({'User-Agent': USER_AGENT})
+    s.headers.update(HEADERS)
 
     def safe_get(url):
         try: 
             r = s.get(url, timeout=10)
-            if r.status_code == 200:
-                return r.json()
-        except:
-            pass
+            if r.status_code == 200: return r.json()
+            else: print(f"⚠️ {url.split('/')[2]} returned {r.status_code}")
+        except Exception as e:
+            print(f"❌ {url.split('/')[2]} error: {str(e)[:50]}")
         return {} 
 
     # 1. BINANCE
-    d = safe_get(URLS['Binance 🔶'])
-    # Безопасное извлечение: (d.get('data') OR {}) -> .get('articles') OR []
-    data_block = d.get('data') or {}
-    articles = data_block.get('articles') or []
-    for x in articles:
+    d = safe_get(URLS['Binance'])
+    for x in (d.get('data') or {}).get('articles') or []:
         news.append({"s": "Binance 🔶", "id": f"bin_{x['code']}", "t": x['title'], "u": f"https://www.binance.com/en/support/announcement/{x['code']}"})
 
     # 2. BYBIT
-    d = safe_get(URLS['Bybit ⚫️'])
-    res = d.get('result') or {}
-    items = res.get('list') or []
-    for x in items:
+    d = safe_get(URLS['Bybit'])
+    for x in (d.get('result') or {}).get('list') or []:
         news.append({"s": "Bybit ⚫️", "id": f"by_{x['id']}", "t": x['title'], "u": x['url']})
 
     # 3. KUCOIN
-    d = safe_get(URLS['KuCoin 🟢'])
-    data_block = d.get('data') or {}
-    items = data_block.get('items') or []
-    for x in items:
+    d = safe_get(URLS['KuCoin'])
+    for x in (d.get('data') or {}).get('items') or []:
         news.append({"s": "KuCoin 🟢", "id": f"ku_{x['id']}", "t": x['title'], "u": f"https://www.kucoin.com/announcement/{x['id']}"})
 
     # 4. HTX
-    d = safe_get(URLS['HTX 🔥'])
-    data_block = d.get('data') or {}
-    items = data_block.get('list') or []
-    for x in items:
+    d = safe_get(URLS['HTX'])
+    for x in (d.get('data') or {}).get('list') or []:
         news.append({"s": "HTX 🔥", "id": f"htx_{x['id']}", "t": x['title'], "u": f"https://www.htx.com/support/en-us/detail/{x['id']}"})
 
     # 5. BITGET
-    d = safe_get(URLS['Bitget 🔵'])
+    d = safe_get(URLS['Bitget'])
     data_list = d.get('data')
     if isinstance(data_list, list):
         for x in data_list:
             news.append({"s": "Bitget 🔵", "id": f"bg_{x['annId']}", "t": x['annTitle'], "u": x['annUrl']})
             
     # 6. MEXC
-    d = safe_get(URLS['MEXC 🌊'])
-    data_block = d.get('data') or {}
-    items = data_block.get('result') or []
-    for x in items:
+    d = safe_get(URLS['MEXC'])
+    for x in (d.get('data') or {}).get('result') or []:
         news.append({"s": "MEXC 🌊", "id": f"mx_{x['id']}", "t": x['title'], "u": f"https://www.mexc.com/support/articles/{x['id']}"})
 
     # 7. GATE
     try:
-        d = s.get(URLS['Gate.io 🚪'], timeout=5).json()
+        d = s.get(URLS['Gate'], timeout=5).json()
         if isinstance(d, list):
             for x in d:
                 if 'title' in x:
-                    news.append({"s": "Gate.io 🚪", "id": f"gate_{x['id']}", "t": x['title'], "u": f"https://www.gate.io/article/{x['id']}"})
-    except: pass
+                    news.append({"s": "Gate 🚪", "id": f"gate_{x['id']}", "t": x['title'], "u": f"https://www.gate.io/article/{x['id']}"})
+    except Exception as e: print(f"❌ Gate error: {str(e)[:50]}")
 
     # 8. BITMART
-    d = safe_get(URLS['BitMart Ⓜ️'])
-    data_bm = d.get('data') or {}
-    # BitMart иногда возвращает data как list, иногда как dict
+    d = safe_get(URLS['BitMart'])
+    data_bm = d.get('data')
     if isinstance(data_bm, dict):
-        items = data_bm.get('news') or []
-        for x in items:
+        for x in data_bm.get('news') or []:
             news.append({"s": "BitMart Ⓜ️", "id": f"bm_{x['id']}", "t": x['title'], "u": x['url']})
 
     # 9. ASCENDEX
-    d = safe_get(URLS['AscendEX 🚀'])
-    data_block = d.get('data') or {}
-    items = data_block.get('data') or []
-    for x in items:
+    d = safe_get(URLS['AscendEX'])
+    for x in (d.get('data') or {}).get('data') or []:
         news.append({"s": "AscendEX 🚀", "id": f"asc_{x['_id']}", "t": x['title'], "u": f"https://ascendex.com/en/support/articles/{x['_id']}"})
 
     # 10. BINGX
-    d = safe_get(URLS['BingX 🟦'])
-    data_block = d.get('data') or {}
-    items = data_block.get('list') or []
-    for x in items:
+    d = safe_get(URLS['BingX'])
+    for x in (d.get('data') or {}).get('list') or []:
          news.append({"s": "BingX 🟦", "id": f"bing_{x['id']}", "t": x['title'], "u": f"https://bingx.com/en-us/support/articles/{x['id']}"})
 
     return news
@@ -172,19 +154,8 @@ def fetch_feed():
 # --- MAIN ---
 def main():
     print(f"🚀 Scanning {len(URLS)} Exchanges...")
-    
-    try:
-        seen = load_db()
-    except Exception as e:
-        print(f"DB Error: {e}")
-        seen = []
-    
-    try:
-        fresh = fetch_feed()
-    except Exception as e:
-        print(f"Global Fetch Error: {e}")
-        fresh = []
-
+    seen = load_db()
+    fresh = fetch_feed()
     print(f"Found {len(fresh)} total news items.")
 
     new_seen = list(seen)
@@ -192,14 +163,12 @@ def main():
 
     for item in reversed(fresh):
         if item['id'] in seen: continue
-        
         if is_gem(item['t']):
             msg = f"💎 *{item['s']} Earn Alert*\n\n{item['t']}\n\n👉 [Open Link]({item['u']})"
             send_tg(msg)
             print(f"✅ SENT: {item['t']}")
             posted += 1
             time.sleep(1)
-        
         new_seen.append(item['id'])
 
     if len(new_seen) > len(seen):
