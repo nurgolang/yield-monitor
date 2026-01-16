@@ -60,26 +60,22 @@ def save_db(data):
 
 # --- LOGIC ---
 def is_gem(title):
+    if not title: return False
     t = title.lower()
     
-    # 1. Stablecoin Check
     if not re.search(STABLES_REGEX, title, re.IGNORECASE):
         return False
         
-    # 2. Earn Keyword Check
     if not any(k in t for k in EARN_KEYWORDS):
         return False
 
-    # 3. APR Logic
-    # Если процентов НЕТ - возвращаем True (новость интересная)
-    # Если проценты ЕСТЬ - проверяем их величину
     percents = re.findall(r"(\d+(?:\.\d+)?)\s*%", t)
     if percents:
         values = [float(x) for x in percents]
         if max(values) < MIN_APR:
-            return False # Процент есть, но он маленький -> False
+            return False 
 
-    return True # Процентов нет, но есть кейворды -> True
+    return True
 
 # --- FETCHER ---
 def fetch_feed():
@@ -89,26 +85,128 @@ def fetch_feed():
 
     def safe_get(url):
         try: 
-            r = s.get(url, timeout=5)
+            r = s.get(url, timeout=10)
             if r.status_code == 200:
                 return r.json()
-        except Exception as e:
-            # print(f"Error fetching {url}: {e}") # Debug only
+        except:
             pass
-        return {} # Возвращаем пустой dict, а не None, чтобы не падать
+        return {} 
 
     # 1. BINANCE
     d = safe_get(URLS['Binance 🔶'])
-    for x in d.get('data', {}).get('articles', []) or []:
+    # Безопасное извлечение: (d.get('data') OR {}) -> .get('articles') OR []
+    data_block = d.get('data') or {}
+    articles = data_block.get('articles') or []
+    for x in articles:
         news.append({"s": "Binance 🔶", "id": f"bin_{x['code']}", "t": x['title'], "u": f"https://www.binance.com/en/support/announcement/{x['code']}"})
 
     # 2. BYBIT
     d = safe_get(URLS['Bybit ⚫️'])
-    # У Bybit иногда result=None при ошибке
     res = d.get('result') or {}
-    for x in res.get('list', []) or []:
+    items = res.get('list') or []
+    for x in items:
         news.append({"s": "Bybit ⚫️", "id": f"by_{x['id']}", "t": x['title'], "u": x['url']})
 
     # 3. KUCOIN
     d = safe_get(URLS['KuCoin 🟢'])
-    for x in d.get('
+    data_block = d.get('data') or {}
+    items = data_block.get('items') or []
+    for x in items:
+        news.append({"s": "KuCoin 🟢", "id": f"ku_{x['id']}", "t": x['title'], "u": f"https://www.kucoin.com/announcement/{x['id']}"})
+
+    # 4. HTX
+    d = safe_get(URLS['HTX 🔥'])
+    data_block = d.get('data') or {}
+    items = data_block.get('list') or []
+    for x in items:
+        news.append({"s": "HTX 🔥", "id": f"htx_{x['id']}", "t": x['title'], "u": f"https://www.htx.com/support/en-us/detail/{x['id']}"})
+
+    # 5. BITGET
+    d = safe_get(URLS['Bitget 🔵'])
+    data_list = d.get('data')
+    if isinstance(data_list, list):
+        for x in data_list:
+            news.append({"s": "Bitget 🔵", "id": f"bg_{x['annId']}", "t": x['annTitle'], "u": x['annUrl']})
+            
+    # 6. MEXC
+    d = safe_get(URLS['MEXC 🌊'])
+    data_block = d.get('data') or {}
+    items = data_block.get('result') or []
+    for x in items:
+        news.append({"s": "MEXC 🌊", "id": f"mx_{x['id']}", "t": x['title'], "u": f"https://www.mexc.com/support/articles/{x['id']}"})
+
+    # 7. GATE
+    try:
+        d = s.get(URLS['Gate.io 🚪'], timeout=5).json()
+        if isinstance(d, list):
+            for x in d:
+                if 'title' in x:
+                    news.append({"s": "Gate.io 🚪", "id": f"gate_{x['id']}", "t": x['title'], "u": f"https://www.gate.io/article/{x['id']}"})
+    except: pass
+
+    # 8. BITMART
+    d = safe_get(URLS['BitMart Ⓜ️'])
+    data_bm = d.get('data') or {}
+    # BitMart иногда возвращает data как list, иногда как dict
+    if isinstance(data_bm, dict):
+        items = data_bm.get('news') or []
+        for x in items:
+            news.append({"s": "BitMart Ⓜ️", "id": f"bm_{x['id']}", "t": x['title'], "u": x['url']})
+
+    # 9. ASCENDEX
+    d = safe_get(URLS['AscendEX 🚀'])
+    data_block = d.get('data') or {}
+    items = data_block.get('data') or []
+    for x in items:
+        news.append({"s": "AscendEX 🚀", "id": f"asc_{x['_id']}", "t": x['title'], "u": f"https://ascendex.com/en/support/articles/{x['_id']}"})
+
+    # 10. BINGX
+    d = safe_get(URLS['BingX 🟦'])
+    data_block = d.get('data') or {}
+    items = data_block.get('list') or []
+    for x in items:
+         news.append({"s": "BingX 🟦", "id": f"bing_{x['id']}", "t": x['title'], "u": f"https://bingx.com/en-us/support/articles/{x['id']}"})
+
+    return news
+
+# --- MAIN ---
+def main():
+    print(f"🚀 Scanning {len(URLS)} Exchanges...")
+    
+    try:
+        seen = load_db()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        seen = []
+    
+    try:
+        fresh = fetch_feed()
+    except Exception as e:
+        print(f"Global Fetch Error: {e}")
+        fresh = []
+
+    print(f"Found {len(fresh)} total news items.")
+
+    new_seen = list(seen)
+    posted = 0
+
+    for item in reversed(fresh):
+        if item['id'] in seen: continue
+        
+        if is_gem(item['t']):
+            msg = f"💎 *{item['s']} Earn Alert*\n\n{item['t']}\n\n👉 [Open Link]({item['u']})"
+            send_tg(msg)
+            print(f"✅ SENT: {item['t']}")
+            posted += 1
+            time.sleep(1)
+        
+        new_seen.append(item['id'])
+
+    if len(new_seen) > len(seen):
+        save_db(new_seen)
+        print(f"Update complete. Sent: {posted}")
+    else:
+        print("No new relevant alerts.")
+
+if __name__ == "__main__":
+    main()
